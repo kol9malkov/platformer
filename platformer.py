@@ -49,15 +49,17 @@ class Player(pygame.sprite.Sprite):
     GRAVITY = 1
     SPRITES = load_sprite_sheets("character", 32, 32, True) # спрайт героя
     PLAYER_VEL = 5
+    ANIMATION_DELAY = 3
+
     def __init__(self, x, y, width, height):
         super().__init__()
         self.rect = pygame.Rect(x, y, width, height)
         self.x_vel = 0  # скорость по x
         self.y_vel = 0  # скорость по y
         self.direction = "right" # Направление по умолчанию
-        self.animation_count = 0
         self.fall_count = 0
-
+        self.animation_count = 0
+        self.mask = None
 
     def move(self, dx, dy):
         self.rect.x += dx
@@ -82,6 +84,8 @@ class Player(pygame.sprite.Sprite):
 
         self.fall_count += 1
 
+        self.update_animation()
+
     def hotkeys(self):
         keys = pygame.key.get_pressed()
         self.x_vel = 0
@@ -90,9 +94,23 @@ class Player(pygame.sprite.Sprite):
         if keys[pygame.K_d]:
             self.move_right(self.PLAYER_VEL)
 
+    def update_animation(self):
+        sprite_sheet = "idle"
+        if self.x_vel != 0:
+            sprite_sheet = "run"
+        
+        sprite_sheet_name = sprite_sheet + "_" + self.direction
+        sprites = self.SPRITES[sprite_sheet_name]
+        sprite_index = (self.animation_count // self.ANIMATION_DELAY) % len(sprites)
+        self.sprite = sprites[sprite_index]
+        self.animation_count += 1
+        self.update_mask()
+
+    def update_mask(self):
+        self.rect = self.sprite.get_rect(topleft=(self.rect.x, self.rect.y))
+        self.mask = pygame.mask.from_surface(self.sprite)
+
     def draw(self):
-        # Выбираем текущий спрайт анимации
-        self.sprite = self.SPRITES["idle_" + self.direction][0]
         screen.blit(self.sprite, (self.rect.x, self.rect.y))
 
 # игровые переменные
