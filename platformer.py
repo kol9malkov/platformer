@@ -60,6 +60,14 @@ class Player(pygame.sprite.Sprite):
         self.fall_count = 0
         self.animation_count = 0
         self.mask = None
+        self.jump_count = 0
+
+    def jump(self):
+        self.y_vel = -self.GRAVITY * 8
+        self.animation_count = 0
+        self.jump_count += 1
+        if self.jump_count == 1:
+            self.fall_count = 0
 
     def move(self, dx, dy):
         self.rect.x += dx
@@ -78,7 +86,7 @@ class Player(pygame.sprite.Sprite):
             self.animation_count = 0
 
     def loop(self):
-        # self.y_vel += min(1, (self.fall_count / FPS) * self.GRAVITY)
+        self.y_vel += min(1, (self.fall_count / FPS) * self.GRAVITY)
         self.move(self.x_vel, self.y_vel)
         self.hotkeys()
 
@@ -89,9 +97,9 @@ class Player(pygame.sprite.Sprite):
     def hotkeys(self):
         keys = pygame.key.get_pressed()
         self.x_vel = 0
-        if keys[pygame.K_a]:
+        if keys[pygame.K_a] and self.rect.x > 0:
             self.move_left(self.PLAYER_VEL)
-        if keys[pygame.K_d]:
+        if keys[pygame.K_d] and self.rect.right < screen_W:
             self.move_right(self.PLAYER_VEL)
 
     def update_animation(self):
@@ -110,12 +118,62 @@ class Player(pygame.sprite.Sprite):
         self.rect = self.sprite.get_rect(topleft=(self.rect.x, self.rect.y))
         self.mask = pygame.mask.from_surface(self.sprite)
 
+    def collide(self, blocks):
+        collide_blocks = []
+        for block in blocks:
+            if pygame.sprite.collide_mask(self, block):
+                if self.y_vel > 0:
+                    self.rect.bottom = block.rect.top
+                    self.landed()
+                if self.y_vel < 0:
+                    self.rect.top = block.rect.bottom
+                    self.hit_head()
+
+                collide_blocks.append(block)
+        return collide_blocks
+    
+    def landed(self):
+        self.fall_count = 0
+        self.y_vel = 0
+        self.jump_count = 0
+
+    def hit_head(self):
+        self.count = 0
+        self.y_vel *= -1
+
     def draw(self):
         screen.blit(self.sprite, (self.rect.x, self.rect.y))
+
+
+class Object(pygame.sprite.Sprite):
+    def __init__(self, x, y, width, height):
+        super().__init__()
+        self.rect = pygame.Rect(x, y, width, height)
+
+    def draw(self):
+        screen.blit(self.image, (self.rect.x, self.rect.y))
+
+
+class Block(Object):
+    def __init__(self, filename, x, y, size):
+        super().__init__(x, y, size, size)
+        path = join("assets", "tiles", filename)
+        self.image = pygame.transform.scale(pygame.image.load(path), (size, size)).convert_alpha()
+        self.mask = pygame.mask.from_surface(self.image)
+
 
 # игровые переменные
 player = Player(100, 100, 50, 50)
 
+blocks_bottom = pygame.sprite.Group()
+block_x = 0
+block_size = 64
+blocks_bottom_amount = screen_W // block_size
+for i in range(blocks_bottom_amount):
+    block = Block('Grass.png', block_x, screen_H - block_size, block_size)
+    blocks_bottom.add(block)
+    block_x += block_size
+block_x = 0
 # игровой цикл
 run_game = True
 while run_game:
@@ -123,11 +181,21 @@ while run_game:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             run_game = False
+            break
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_SPACE and player.jump_count < 2:
+                player.jump()
 
     # передвижение
     player.loop()
+    # столкновение
+    player.collide(blocks_bottom)
     # отрисовка
     player.draw()
+
+    for block in blocks_bottom:
+        block.draw()
+
 
     pygame.display.update()
     clock.tick(FPS)
