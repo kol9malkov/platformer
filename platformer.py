@@ -1,6 +1,6 @@
 import pygame
 from os import listdir
-from os.path import isfile, join, exists
+from os.path import isfile, join
 
 pygame.init()
 # окно
@@ -44,10 +44,10 @@ def load_sprite_sheets(dir, width, height, direction=False):
     return all_sprites
 
 
-""" КЛАССЫ """
+# Классы
 class Player(pygame.sprite.Sprite):
     GRAVITY = 1
-    SPRITES = load_sprite_sheets("character", 32, 32, True) # спрайт героя
+    SPRITES = load_sprite_sheets("character", 32, 32, True)  # спрайт героя
     PLAYER_VEL = 5
     ANIMATION_DELAY = 3
 
@@ -56,7 +56,7 @@ class Player(pygame.sprite.Sprite):
         self.rect = pygame.Rect(x, y, width, height)
         self.x_vel = 0  # скорость по x
         self.y_vel = 0  # скорость по y
-        self.direction = "right" # Направление по умолчанию
+        self.direction = "right"  # Направление по умолчанию
         self.fall_count = 0
         self.animation_count = 0
         self.mask = None
@@ -72,7 +72,7 @@ class Player(pygame.sprite.Sprite):
     def move(self, dx, dy):
         self.rect.x += dx
         self.rect.y += dy
-        
+
     def move_left(self, vel):
         self.x_vel = -vel
         if self.direction != "left":
@@ -95,16 +95,18 @@ class Player(pygame.sprite.Sprite):
 
     def update_animation(self):
         sprite_sheet = "idle"
-        if self.y_vel < 0:
+        if self.hit:
+            sprite_sheet = "hit"
+        elif self.y_vel < 0:
             if self.jump_count == 1:
-                sprite_sheet = 'jump'
+                sprite_sheet = "jump"
             elif self.jump_count == 2:
-                sprite_sheet = 'double_jump'
+                sprite_sheet = "double_jump"
         elif self.y_vel > self.GRAVITY * 2:
-            sprite_sheet = 'fall'
+            sprite_sheet = "fall"
         if self.x_vel != 0:
             sprite_sheet = "run"
-        
+
         sprite_sheet_name = sprite_sheet + "_" + self.direction
         sprites = self.SPRITES[sprite_sheet_name]
         sprite_index = (self.animation_count // self.ANIMATION_DELAY) % len(sprites)
@@ -115,7 +117,7 @@ class Player(pygame.sprite.Sprite):
     def update_mask(self):
         self.rect = self.sprite.get_rect(topleft=(self.rect.x, self.rect.y))
         self.mask = pygame.mask.from_surface(self.sprite)
-    
+
     def landed(self):
         self.fall_count = 0
         self.y_vel = 0
@@ -134,21 +136,28 @@ class Object(pygame.sprite.Sprite):
         super().__init__()
         path = join("assets", dir, filename)
         self.rect = pygame.Rect(x, y, size, size)
-        self.image = pygame.transform.scale(pygame.image.load(path), (size, size)).convert_alpha()
+        self.image = pygame.transform.scale(
+            pygame.image.load(path), (size, size)
+        ).convert_alpha()
         self.mask = pygame.mask.from_surface(self.image)
 
     def draw(self):
         screen.blit(self.image, (self.rect.x, self.rect.y))
 
+
 class Block(Object):
     pass
+
 
 class Saw(Object):
     def __init__(self, dir, filename, x, y, size):
         super().__init__(dir, filename, x, y, size)
         self.speed = 3
         self.angle = 0
-        self.original_image = self.image.copy()  # Сохраняем копию оригинального изображения
+        self.side = "right"
+        self.original_image = (
+            self.image.copy()
+        )  # Сохраняем копию оригинального изображения
 
     def on(self, cell_size, n):
         if self.rect.x <= cell_size * n:
@@ -166,22 +175,38 @@ class Saw(Object):
         if self.angle >= 360:
             self.angle = 0  # Сбрасываем угол, если он станет больше или равен 360
         self.image = pygame.transform.rotate(self.original_image, self.angle)
-        self.rect = self.image.get_rect(center=self.rect.center)  # Обновляем положение спрайта после поворота
+        self.rect = self.image.get_rect(
+            center=self.rect.center
+        )  # Обновляем положение спрайта после поворота
+
+
+class Door(Object):
+    def __init__(self, dir, filename, x, y, width, height):
+        super().__init__(dir, filename, x, y, width)
+        self.rect.width = width
+        self.rect.height = height
+        path = join("assets", dir, filename)
+        self.image = pygame.transform.scale(
+            pygame.image.load(path), (width, height)
+        ).convert_alpha()
+        self.mask = pygame.mask.from_surface(self.image)
+
 
 # обработка столкновений и управление
 def collide_vertical(player, blocks, dy):
-        collide_blocks = []
-        for block in blocks:
-            if pygame.sprite.collide_mask(player, block):
-                if dy > 0:
-                    player.rect.bottom = block.rect.top
-                    player.landed()
-                if dy < 0:
-                    player.rect.top = block.rect.bottom
-                    player.hit_head()
+    collide_blocks = []
+    for block in blocks:
+        if pygame.sprite.collide_mask(player, block):
+            if dy > 0:
+                player.rect.bottom = block.rect.top
+                player.landed()
+            if dy < 0:
+                player.rect.top = block.rect.bottom
+                player.hit_head()
 
-                collide_blocks.append(block)
-        return collide_blocks
+            collide_blocks.append(block)
+    return collide_blocks
+
 
 def collide_horizontale(player, blocks, dx):
     player.move(dx, 0)
@@ -195,16 +220,17 @@ def collide_horizontale(player, blocks, dx):
     player.update()
     return collide_blocks
 
+
 def hotkeys(player, blocks):
     keys = pygame.key.get_pressed()
     player.x_vel = 0
 
-    collide_left = collide_horizontale(player, blocks, (player.PLAYER_VEL*-1)*2)
+    collide_left = collide_horizontale(player, blocks, (player.PLAYER_VEL * -1) * 2)
     collide_right = collide_horizontale(player, blocks, player.PLAYER_VEL * 2)
-    
+
     if keys[pygame.K_a] and player.rect.x > 0 and not collide_left:
         player.move_left(player.PLAYER_VEL)
-    if keys[pygame.K_d] and player.rect.right < screen_H and not collide_right:
+    if keys[pygame.K_d] and player.rect.right < screen_W and not collide_right:
         player.move_right(player.PLAYER_VEL)
 
     collide_vertical(player, blocks, player.y_vel)
@@ -215,29 +241,64 @@ player = Player(0, 0, 50, 50)
 
 block_size = 64
 
-blocks, saws, doors, coins = pygame.sprite.Group(), pygame.sprite.Group(), pygame.sprite.Group(), pygame.sprite.Group()
+blocks, saws, doors, coins = (
+    pygame.sprite.Group(),
+    pygame.sprite.Group(),
+    pygame.sprite.Group(),
+    pygame.sprite.Group(),
+)
 
+blocks.add(
+    [
+        Block("tiles", "Grass.png", i * block_size, screen_H - block_size, block_size)
+        for i in range(14)
+    ],
+    [
+        Block("tiles", "Grass.png", i * block_size, block_size * 2, block_size)
+        for i in range(3)
+    ],
+    [
+        Block("tiles", "Dirt.png", i * block_size, block_size * 3, block_size)
+        for i in range(3, 5)
+    ],
+    [
+        Block("tiles", "Grass.png", i * block_size, block_size * 2, block_size)
+        for i in range(5, 10)
+    ],
+    [
+        Block("tiles", "Grass.png", i * block_size, block_size * 5, block_size)
+        for i in range(10, 14)
+    ],
+    [
+        Block("tiles", "Dirt.png", 6 * block_size, block_size * i, block_size)
+        for i in range(3, 8)
+    ],
+    [
+        Block("tiles", "Grass.png", i * block_size, block_size * 7, block_size)
+        for i in range(2, 6)
+    ],
+)
 
-blocks.add(Block('tiles', "Grass.png", i * block_size, screen_H - block_size, block_size) for i in range(14))
+saws.add(Saw("traps", "Saw.png", block_size * 8, block_size * 8, block_size * 2))
 
-blocks.add(Block('tiles', "Grass.png", i * block_size, block_size * 2, block_size) for i in range(3))
-blocks.add(Block('tiles', "Dirt.png", i * block_size, block_size * 3, block_size) for i in range(3, 5))
-blocks.add(Block('tiles', "Grass.png", i * block_size, block_size * 2, block_size) for i in range(5, 10))
-
-blocks.add(Block('tiles', "Grass.png", i * block_size, block_size * 5, block_size) for i in range(10, 14))
-blocks.add(Block('tiles', "Dirt.png", 6 * block_size, block_size * i, block_size) for i in range(3, 8))
-blocks.add(Block('tiles', "Grass.png", i * block_size, block_size * 7, block_size) for i in range(2, 6))
-
-
+doors.add(
+    Door(
+        "tiles", "door.png", block_size * 4, block_size * 5, block_size, block_size * 2
+    )
+)
 
 # игровой цикл
 run_game = True
 while run_game:
     screen.blit(background, (0, 0))
-    for line in range(screen_H//64+1):
-        pygame.draw.line(screen, (255, 255, 255), (0, line * 64), (screen_W, line * 64), 2)
-        for col in range(screen_W//64+1):
-            pygame.draw.line(screen, (255, 255, 255), (col * 64, 0), (col * 64, screen_H), 2)
+    for line in range(screen_H // 64 + 1):
+        pygame.draw.line(
+            screen, (255, 255, 255), (0, line * 64), (screen_W, line * 64), 2
+        )
+        for col in range(screen_W // 64 + 1):
+            pygame.draw.line(
+                screen, (255, 255, 255), (col * 64, 0), (col * 64, screen_H), 2
+            )
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             run_game = False
@@ -251,10 +312,16 @@ while run_game:
     # столкновение
     hotkeys(player, blocks)
     # отрисовка
-    player.draw()
-        
     for block in blocks:
         block.draw()
+    for saw in saws:
+        saw.draw()
+        saw.animation()
+        saw.on(block_size, 5)
+    for door in doors:
+        door.draw()
+
+    player.draw()
 
     pygame.display.update()
     clock.tick(FPS)
