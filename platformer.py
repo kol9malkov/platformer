@@ -97,13 +97,21 @@ class Player(pygame.sprite.Sprite):
     def hotkeys(self):
         keys = pygame.key.get_pressed()
         self.x_vel = 0
-        if keys[pygame.K_a] and self.rect.x > 0:
+
+        if keys[pygame.K_a]:
             self.move_left(self.PLAYER_VEL)
-        if keys[pygame.K_d] and self.rect.right < screen_W:
+        if keys[pygame.K_d]:
             self.move_right(self.PLAYER_VEL)
 
     def update_animation(self):
         sprite_sheet = "idle"
+        if self.y_vel < 0:
+            if self.jump_count == 1:
+                sprite_sheet = 'jump'
+            elif self.jump_count == 2:
+                sprite_sheet = 'double_jump'
+        elif self.y_vel > self.GRAVITY * 2:
+            sprite_sheet = 'fall'
         if self.x_vel != 0:
             sprite_sheet = "run"
         
@@ -118,7 +126,7 @@ class Player(pygame.sprite.Sprite):
         self.rect = self.sprite.get_rect(topleft=(self.rect.x, self.rect.y))
         self.mask = pygame.mask.from_surface(self.sprite)
 
-    def collide(self, blocks):
+    def collide_vertical(self, blocks):
         collide_blocks = []
         for block in blocks:
             if pygame.sprite.collide_mask(self, block):
@@ -146,34 +154,64 @@ class Player(pygame.sprite.Sprite):
 
 
 class Object(pygame.sprite.Sprite):
-    def __init__(self, x, y, width, height):
+    def __init__(self, dir, filename, x, y, size):
         super().__init__()
-        self.rect = pygame.Rect(x, y, width, height)
+        path = join("assets", dir, filename)
+        self.rect = pygame.Rect(x, y, size, size)
+        self.image = pygame.transform.scale(pygame.image.load(path), (size, size)).convert_alpha()
+        self.mask = pygame.mask.from_surface(self.image)
 
     def draw(self):
         screen.blit(self.image, (self.rect.x, self.rect.y))
 
-
 class Block(Object):
-    def __init__(self, filename, x, y, size):
-        super().__init__(x, y, size, size)
-        path = join("assets", "tiles", filename)
-        self.image = pygame.transform.scale(pygame.image.load(path), (size, size)).convert_alpha()
-        self.mask = pygame.mask.from_surface(self.image)
+    pass
+
+class Saw(Object):
+    def __init__(self, dir, filename, x, y, size):
+        super().__init__(dir, filename, x, y, size)
+        self.speed = 3
+        self.angle = 0
+        self.original_image = self.image.copy()  # Сохраняем копию оригинального изображения
+
+    def on(self, cell_size, n):
+        if self.rect.x <= cell_size * n:
+            self.side = "right"
+        if self.rect.x >= screen_W - 128:
+            self.side = "left"
+        if self.side == "left":
+            self.rect.x -= self.speed
+        else:
+            self.rect.x += self.speed
+
+    def animation(self):
+        # Поворачиваем изображение пилы
+        self.angle += 5  # Увеличиваем угол для вращения
+        if self.angle >= 360:
+            self.angle = 0  # Сбрасываем угол, если он станет больше или равен 360
+        self.image = pygame.transform.rotate(self.original_image, self.angle)
+        self.rect = self.image.get_rect(center=self.rect.center)  # Обновляем положение спрайта после поворота
 
 
 # игровые переменные
-player = Player(100, 100, 50, 50)
+player = Player(0, 0, 50, 50)
 
-blocks_bottom = pygame.sprite.Group()
+block_size = 64
+
+lvl1 = []
+blocks = pygame.sprite.Group()
+
 block_x = 0
 block_size = 64
 blocks_bottom_amount = screen_W // block_size
 for i in range(blocks_bottom_amount):
-    block = Block('Grass.png', block_x, screen_H - block_size, block_size)
-    blocks_bottom.add(block)
+    block = Block('tiles', 'Grass.png', block_x, screen_H - block_size, block_size)
+    blocks.add(block)
     block_x += block_size
 block_x = 0
+
+blocks.add(Block('tiles', 'Grass.png', block_x + block_size * 4, screen_H - block_size * 2, block_size))
+
 # игровой цикл
 run_game = True
 while run_game:
@@ -189,13 +227,17 @@ while run_game:
     # передвижение
     player.loop()
     # столкновение
-    player.collide(blocks_bottom)
+    player.collide_vertical(blocks)
     # отрисовка
     player.draw()
 
-    for block in blocks_bottom:
-        block.draw()
+    for line in range(screen_H//64+1):
+        pygame.draw.line(screen, (255, 255, 255), (0, line * 64), (screen_W, line * 64), 2)
+        for col in range(screen_W//64+1):
+            pygame.draw.line(screen, (255, 255, 255), (col * 64, 0), (col * 64, screen_H), 2)
 
+    for block in blocks:
+        block.draw()
 
     pygame.display.update()
     clock.tick(FPS)
