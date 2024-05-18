@@ -2,6 +2,7 @@ import pygame
 from os import listdir
 from os.path import isfile, join
 
+
 pygame.init()
 # окно
 screen_W, screen_H = 900, 700
@@ -61,6 +62,9 @@ class Player(pygame.sprite.Sprite):
         self.animation_count = 0
         self.mask = None
         self.jump_count = 0
+        self.hit = False
+        self.hit_count = 0
+
 
     def jump(self):
         self.y_vel = -self.GRAVITY * 8
@@ -68,6 +72,10 @@ class Player(pygame.sprite.Sprite):
         self.jump_count += 1
         if self.jump_count == 1:
             self.fall_count = 0
+
+    def make_hit(self):
+        self.hit = True
+        self.hit_count = 0
 
     def move(self, dx, dy):
         self.rect.x += dx
@@ -89,6 +97,12 @@ class Player(pygame.sprite.Sprite):
         self.y_vel += min(1, (self.fall_count / FPS) * self.GRAVITY)
         self.move(self.x_vel, self.y_vel)
 
+        if self.hit:
+            self.hit_count += 1
+        if self.hit_count > FPS * 2:
+            self.hit = False
+            self.hit_count = 0
+
         self.fall_count += 1
 
         self.update_animation()
@@ -97,7 +111,7 @@ class Player(pygame.sprite.Sprite):
         sprite_sheet = "idle"
         if self.hit:
             sprite_sheet = "hit"
-        elif self.y_vel < 0:
+        if self.y_vel < 0:
             if self.jump_count == 1:
                 sprite_sheet = "jump"
             elif self.jump_count == 2:
@@ -126,6 +140,13 @@ class Player(pygame.sprite.Sprite):
     def hit_head(self):
         self.count = 0
         self.y_vel *= -1
+
+    def collide_trap(self, trap):
+        if pygame.sprite.collide_mask(self, trap):
+            self.make_hit()
+            self.rect.x = 0
+            self.rect.y = 0
+
 
     def draw(self):
         screen.blit(self.sprite, (self.rect.x, self.rect.y))
@@ -192,6 +213,52 @@ class Door(Object):
         self.mask = pygame.mask.from_surface(self.image)
 
 
+# игровые переменные
+player = Player(0, 0, 50, 50)
+
+block_size = 64
+
+blocks, saws = (
+    pygame.sprite.Group(),
+    pygame.sprite.Group()
+)
+
+blocks.add(
+    [
+        Block("tiles", "Grass.png", i * block_size, screen_H - block_size, block_size)
+        for i in range(14)
+    ],
+    [
+        Block("tiles", "Grass.png", i * block_size, block_size * 2, block_size)
+        for i in range(3)
+    ],
+    [
+        Block("tiles", "Dirt.png", i * block_size, block_size * 3, block_size)
+        for i in range(3, 5)
+    ],
+    [
+        Block("tiles", "Grass.png", i * block_size, block_size * 2, block_size)
+        for i in range(5, 10)
+    ],
+    [
+        Block("tiles", "Grass.png", i * block_size, block_size * 5, block_size)
+        for i in range(10, 14)
+    ],
+    [
+        Block("tiles", "Dirt.png", 6 * block_size, block_size * i, block_size)
+        for i in range(3, 8)
+    ],
+    [
+        Block("tiles", "Grass.png", i * block_size, block_size * 7, block_size)
+        for i in range(2, 6)
+    ],
+)
+
+saws.add(Saw("traps", "Saw.png", block_size * 8, block_size * 8, block_size * 2))
+
+door = Door("tiles", "door.png", block_size * 4, block_size * 5, block_size, block_size * 2)
+
+
 # обработка столкновений и управление
 def collide_vertical(player, blocks, dy):
     collide_blocks = []
@@ -235,61 +302,11 @@ def hotkeys(player, blocks):
 
     collide_vertical(player, blocks, player.y_vel)
 
-
-# игровые переменные
-player = Player(0, 0, 50, 50)
-
-block_size = 64
-
-blocks, saws, doors, coins = (
-    pygame.sprite.Group(),
-    pygame.sprite.Group(),
-    pygame.sprite.Group(),
-    pygame.sprite.Group(),
-)
-
-blocks.add(
-    [
-        Block("tiles", "Grass.png", i * block_size, screen_H - block_size, block_size)
-        for i in range(14)
-    ],
-    [
-        Block("tiles", "Grass.png", i * block_size, block_size * 2, block_size)
-        for i in range(3)
-    ],
-    [
-        Block("tiles", "Dirt.png", i * block_size, block_size * 3, block_size)
-        for i in range(3, 5)
-    ],
-    [
-        Block("tiles", "Grass.png", i * block_size, block_size * 2, block_size)
-        for i in range(5, 10)
-    ],
-    [
-        Block("tiles", "Grass.png", i * block_size, block_size * 5, block_size)
-        for i in range(10, 14)
-    ],
-    [
-        Block("tiles", "Dirt.png", 6 * block_size, block_size * i, block_size)
-        for i in range(3, 8)
-    ],
-    [
-        Block("tiles", "Grass.png", i * block_size, block_size * 7, block_size)
-        for i in range(2, 6)
-    ],
-)
-
-saws.add(Saw("traps", "Saw.png", block_size * 8, block_size * 8, block_size * 2))
-
-doors.add(
-    Door(
-        "tiles", "door.png", block_size * 4, block_size * 5, block_size, block_size * 2
-    )
-)
-
 # игровой цикл
 run_game = True
+finish = False
 while run_game:
+
     screen.blit(background, (0, 0))
     for line in range(screen_H // 64 + 1):
         pygame.draw.line(
@@ -308,7 +325,8 @@ while run_game:
                 player.jump()
 
     # передвижение
-    player.loop()
+    if not finish:
+        player.loop()
     # столкновение
     hotkeys(player, blocks)
     # отрисовка
@@ -318,10 +336,18 @@ while run_game:
         saw.draw()
         saw.animation()
         saw.on(block_size, 5)
-    for door in doors:
-        door.draw()
+        player.collide_trap(saw)
+    
+    door.draw()
+    
+    if pygame.sprite.collide_mask(player, door):
+        font1 = pygame.font.Font(None, 90)
+        text = font1.render('You WIN!', True, (0, 22, 13))
+        screen.blit(text, (350, 350))
+        finish = True
 
     player.draw()
+
 
     pygame.display.update()
     clock.tick(FPS)
